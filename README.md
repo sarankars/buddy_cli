@@ -1,53 +1,111 @@
 # Buddy CLI
 
-Buddy is a small Python CLI foundation for improving rough prompts before they
-are passed to an AI assistant.
+Buddy improves rough prompts before they are sent to an AI assistant. It uses a
+local Ollama model when configured and retains a deterministic offline enhancer
+when local AI is unavailable.
 
-The initial version provides a deterministic, offline enhancer. It trims the
-input and wraps it with instructions that preserve the user's intent, make
-reasonable assumptions explicit, and request an actionable result. It does not
-call an AI model yet.
+## Commands
 
-## Requirements
+### `buddy setup`
 
-- Python 3.9 or newer
-
-## Development setup
+Provision and verify Ollama and the prompt-enhancement model:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --editable .
+buddy setup
 ```
 
-## Usage
+Buddy reuses a healthy system Ollama service when possible. Otherwise it asks
+permission to download a pinned, checksum-verified runtime into Buddy's private
+application-data directory. It then asks before downloading the default
+`qwen2.5:3b-instruct` model, runs an enhancement smoke test, and saves the
+verified configuration.
 
-Pass a prompt as an argument:
+For unattended environments, explicitly approve downloads:
+
+```bash
+buddy setup --yes
+```
+
+Preview setup without making changes:
+
+```bash
+buddy setup --dry-run
+```
+
+### `buddy enhance`
+
+Enhance a prompt with the configured local model:
 
 ```bash
 buddy enhance "make the readme better"
 ```
 
-Or pipe a prompt through standard input:
+On an interactive first run, Buddy offers to start setup automatically. If
+setup is declined or Ollama is unavailable, Buddy returns a deterministic
+offline enhancement instead of losing the request.
+
+Pipe a prompt through standard input:
 
 ```bash
 printf 'make the readme better' | buddy enhance
 ```
 
-Run the package without installing the command separately:
+Force the offline enhancer:
 
 ```bash
-python -m buddy_cli enhance "make the readme better"
+buddy enhance --offline "make the readme better"
 ```
 
-## Tests
+### `buddy doctor`
+
+Check platform support, storage access, configuration, the Ollama runtime, its
+local API, and the configured model:
 
 ```bash
+buddy doctor
+buddy doctor --json
+```
+
+## Safety and privacy
+
+- Managed runtime downloads come from a pinned official Ollama release.
+- Runtime archives are verified with their published SHA-256 digests.
+- Buddy does not invoke `sudo`, edit `PATH`, or run downloaded installer scripts.
+- Managed Ollama listens only on localhost and stores models under Buddy's data
+  directory.
+- Prompts sent to the managed model remain on the user's computer.
+
+See [the provisioning design](docs/provisioning.md) for the complete behavior
+and platform-specific storage locations.
+
+## Development
+
+Buddy requires Python 3.9 or newer for source development.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --editable .
 python -m unittest discover -s tests -v
 ```
 
-## Planned extension points
+`BUDDY_HOME` overrides the application-data directory for isolated development
+and tests:
 
-The enhancement logic is isolated in `buddy_cli.enhancer`, which allows future
-enhancers—such as Ollama, an API provider, or an MCP tool—to be added without
-changing the command-line interface.
+```bash
+BUDDY_HOME=/tmp/buddy-dev buddy setup --dry-run
+```
+
+## Standalone executable
+
+Install the build dependency and create a platform-specific executable:
+
+```bash
+python -m pip install --editable '.[build]'
+python scripts/build_standalone.py
+```
+
+The result is written to `dist/buddy` (`dist/buddy.exe` on Windows). The
+executable includes Python and Buddy's Python dependencies. Ollama and the model
+remain first-run downloads managed by `buddy setup`, keeping the Buddy download
+itself reasonably small.
