@@ -1,5 +1,7 @@
 """Tests for final release asset verification."""
 
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,6 +22,19 @@ def create_release_assets(root: Path) -> None:
 
 
 class VerifyReleaseAssetsTests(unittest.TestCase):
+    def test_script_can_run_directly(self) -> None:
+        project_root = Path(__file__).resolve().parents[1]
+
+        result = subprocess.run(
+            [sys.executable, "scripts/verify_release_assets.py", "--help"],
+            cwd=project_root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_verifies_all_assets_and_creates_combined_checksums(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

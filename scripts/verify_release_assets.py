@@ -6,7 +6,10 @@ import argparse
 from pathlib import Path
 from typing import Optional, Sequence
 
-from scripts.checksum import sha256_file
+if __package__:
+    from .checksum import sha256_file
+else:
+    from checksum import sha256_file
 
 RELEASE_ARCHIVES = (
     "buddy-linux-arm64.tar.gz",

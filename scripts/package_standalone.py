@@ -11,7 +11,10 @@ import zipfile
 from pathlib import Path
 from typing import Optional, Sequence
 
-from scripts.checksum import write_checksum
+if __package__:
+    from .checksum import write_checksum
+else:
+    from checksum import write_checksum
 
 
 def package_binary(

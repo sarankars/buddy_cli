@@ -1,6 +1,8 @@
 """Tests for release packaging."""
 
 import stat
+import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -12,6 +14,19 @@ from scripts.package_standalone import package_binary
 
 
 class PackageStandaloneTests(unittest.TestCase):
+    def test_script_can_run_directly(self) -> None:
+        project_root = Path(__file__).resolve().parents[1]
+
+        result = subprocess.run(
+            [sys.executable, "scripts/package_standalone.py", "--help"],
+            cwd=project_root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_packages_posix_binary_with_executable_permissions(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
