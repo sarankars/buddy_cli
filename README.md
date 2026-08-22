@@ -113,3 +113,10 @@ The result is written to `dist/buddy` (`dist/buddy.exe` on Windows). The
 executable includes Python and Buddy's Python dependencies. Ollama and the model
 remain first-run downloads managed by `buddy setup`, keeping the Buddy download
 itself reasonably small.
+
+## GitHub Actions
+
+Every push to `main` runs the test suite on the minimum supported Python version
+and the latest stable Python version. Pushing any Git tag builds and smoke-tests
+standalone archives for macOS Intel and ARM64, Windows x64 and ARM64, and Linux
+x64 and ARM64. Each archive is retained as a workflow artifact for 30 days.
