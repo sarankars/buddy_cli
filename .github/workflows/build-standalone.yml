@@ -1,17 +1,54 @@
-name: Build standalone binaries
+name: Release
 
 on:
   push:
     tags:
-      - "**"
-  workflow_dispatch:
+      - "v*"
 
 permissions:
   contents: read
 
 jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-24.04
+    outputs:
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+      version: ${{ steps.metadata.outputs.version }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Validate semantic version and project version
+        id: metadata
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          project_version=$(PYTHONPATH=src python -c "from buddy_cli import __version__; print(__version__)")
+          package_version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          if [ "$project_version" != "$package_version" ]; then
+            echo "Version mismatch: __version__=$project_version, pyproject.toml=$package_version" >&2
+            exit 1
+          fi
+          python scripts/release_metadata.py "$RELEASE_TAG" \
+            --project-version "$project_version" >> "$GITHUB_OUTPUT"
+
+  quality:
+    name: Complete quality suite
+    needs: validate
+    uses: ./.github/workflows/tests.yml
+
   build:
     name: ${{ matrix.target }}
+    needs:
+      - validate
+      - quality
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -69,6 +106,54 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: buddy-${{ matrix.target }}
-          path: ${{ matrix.archive }}
+          path: |
+            ${{ matrix.archive }}
+            ${{ matrix.archive }}.sha256
           if-no-files-found: error
           retention-days: 30
+
+  release:
+    name: Publish GitHub Release
+    needs:
+      - validate
+      - quality
+      - build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Download every platform artifact
+        uses: actions/download-artifact@v8
+        with:
+          pattern: buddy-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify release assets and checksums
+        run: python scripts/verify_release_assets.py release-assets
+
+      - name: Publish stable release
+        if: needs.validate.outputs.prerelease == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --verify-tag \
+            --generate-notes
+
+      - name: Publish prerelease
+        if: needs.validate.outputs.prerelease == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --verify-tag \
+            --generate-notes \
+            --prerelease \
+            --latest=false

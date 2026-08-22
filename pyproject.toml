@@ -22,6 +22,9 @@ classifiers = [
 build = [
     "pyinstaller>=6.16,<7",
 ]
+quality = [
+    "ruff>=0.12,<1",
+]
 
 [project.scripts]
 buddy = "buddy_cli.cli:main"
