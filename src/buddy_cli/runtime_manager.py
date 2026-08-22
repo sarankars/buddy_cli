@@ -135,6 +135,7 @@ class RuntimeManager:
                 archive,
                 spec.sha256,
                 progress=download_progress,
+                status=status_callback,
             )
 
         staged: Optional[Path] = Path(

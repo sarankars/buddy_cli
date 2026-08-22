@@ -18,7 +18,8 @@ Buddy follows these rules when it provisions Ollama and the enhancement model:
 6. Keep managed files inside Buddy's application-data directory.
 7. Never invoke `sudo`, modify `PATH`, or execute a downloaded installer script.
 8. Bind a managed Ollama service to localhost on a Buddy-specific port.
-9. Remove incomplete downloads and staged installations after failures.
+9. Resume runtime downloads after transient failures and remove unsafe or
+   checksum-mismatched files.
 10. Fall back to the deterministic offline enhancer when local AI is unavailable.
 
 ## First-run flow

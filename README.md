@@ -20,6 +20,10 @@ application-data directory. It then asks before downloading the default
 `qwen2.5:3b-instruct` model, runs an enhancement smoke test, and saves the
 verified configuration.
 
+Runtime downloads show transfer speed and an estimated completion time. If the
+connection stalls, Buddy retries automatically and preserves the partial file so
+the next `buddy setup` continues instead of starting over.
+
 For unattended environments, explicitly approve downloads:
 
 ```bash

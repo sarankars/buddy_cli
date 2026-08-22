@@ -8,7 +8,7 @@ from typing import Callable, List, Optional
 
 from buddy_cli.config import BuddyConfig, ConfigError, ConfigStore
 from buddy_cli.constants import DEFAULT_MODEL, MODEL_DOWNLOAD_ESTIMATE_BYTES
-from buddy_cli.download import DownloadProgress
+from buddy_cli.download import DownloadError, DownloadProgress
 from buddy_cli.ollama import ModelProgress, OllamaClient, OllamaError
 from buddy_cli.paths import AppPaths
 from buddy_cli.runtime_manager import RuntimeManager
@@ -131,10 +131,15 @@ class Provisioner:
             )
             if not confirm(message, False):
                 raise SetupCancelled("Ollama runtime download was declined")
-            selection = self.runtime_manager.install_managed(
-                download_progress=download_progress,
-                status_callback=emit,
-            )
+            try:
+                selection = self.runtime_manager.install_managed(
+                    download_progress=download_progress,
+                    status_callback=emit,
+                )
+            except (DownloadError, OSError) as exc:
+                raise ProvisioningError(
+                    f"could not install the Ollama runtime: {exc}"
+                ) from exc
             installed_runtime = True
             emit("Ollama runtime is installed and verified")
         else:

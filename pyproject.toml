@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "buddy-cli"
-version = "0.2.0"
+version = "0.2.1"
 description = "Enhance rough prompts before sending them to an AI assistant."
 readme = "README.md"
 requires-python = ">=3.9"

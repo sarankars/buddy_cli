@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from dataclasses import dataclass
 from typing import Optional, Sequence, TextIO
 
@@ -90,6 +91,16 @@ def _read_prompt(parts: Sequence[str], input_stream: TextIO) -> str:
     return input_stream.read()
 
 
+def _format_duration(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, remaining_seconds = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {remaining_seconds:02d}s"
+    hours, remaining_minutes = divmod(minutes, 60)
+    return f"{hours}h {remaining_minutes:02d}m"
+
+
 @dataclass
 class TerminalUI:
     input_stream: TextIO
@@ -97,6 +108,9 @@ class TerminalUI:
     assume_yes: bool = False
     _last_download_percent: int = -1
     _last_model_percent: int = -1
+    _download_started_at: Optional[float] = None
+    _download_started_bytes: int = 0
+    _last_download_report_at: float = 0.0
 
     def emit(self, message: str) -> None:
         print(f"[buddy] {message}", file=self.output_stream)
@@ -119,17 +133,41 @@ class TerminalUI:
         return response in {"y", "yes"}
 
     def download_progress(self, completed: int, total: Optional[int]) -> None:
+        now = time.monotonic()
+        if self._download_started_at is None:
+            self._download_started_at = now
+            self._download_started_bytes = completed
+
         if total:
             percent = min(100, int(completed * 100 / total))
-            if percent == self._last_download_percent:
+            report_is_due = now - self._last_download_report_at >= 1.0
+            if (
+                percent == self._last_download_percent
+                and completed != total
+                and not report_is_due
+            ):
                 return
             self._last_download_percent = percent
-            self.emit(
+            self._last_download_report_at = now
+            message = (
                 f"Runtime download {percent}% "
                 f"({format_bytes(completed)} of {format_bytes(total)})"
             )
+            elapsed = now - self._download_started_at
+            transferred = completed - self._download_started_bytes
+            if elapsed > 0 and transferred > 0:
+                bytes_per_second = transferred / elapsed
+                remaining = max(0, total - completed)
+                eta_seconds = int(remaining / bytes_per_second)
+                message += (
+                    f" at {format_bytes(int(bytes_per_second))}/s, "
+                    f"ETA {_format_duration(eta_seconds)}"
+                )
+            self.emit(message)
         elif completed:
-            self.emit(f"Runtime download {format_bytes(completed)}")
+            if now - self._last_download_report_at >= 1.0:
+                self._last_download_report_at = now
+                self.emit(f"Runtime download {format_bytes(completed)}")
 
     def model_progress(
         self,
