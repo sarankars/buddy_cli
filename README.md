@@ -95,6 +95,34 @@ buddy doctor
 buddy doctor --json
 ```
 
+### `buddy update`
+
+Check the latest stable GitHub Release without installing anything:
+
+```bash
+buddy update --check
+```
+
+Check for a newer version and install it after confirmation:
+
+```bash
+buddy update
+```
+
+For explicitly approved non-interactive updates:
+
+```bash
+buddy update --yes
+```
+
+Buddy selects the package for the current operating system and architecture,
+validates the release URL and metadata, verifies the package against its
+published SHA-256 checksum, and cross-checks GitHub's asset digest when present.
+macOS updates also verify the signed installer and require a successful
+Gatekeeper assessment before opening it. See the
+[update guide](docs/updates.md) for platform behavior and source-installation
+instructions.
+
 ## Safety and privacy
 
 - Managed runtime downloads come from a pinned official Ollama release.
@@ -103,6 +131,8 @@ buddy doctor --json
 - Managed Ollama listens only on localhost and stores models under Buddy's data
   directory.
 - Prompts sent to the managed model remain on the user's computer.
+- Buddy updates use only published stable releases from the official repository
+  and are installed only after checksum verification.
 
 See [the provisioning design](docs/provisioning.md) for the complete behavior
 and platform-specific storage locations.

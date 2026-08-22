@@ -11,6 +11,12 @@ from buddy_cli.cli import main
 from buddy_cli.config import BuddyConfig
 from buddy_cli.doctor import DiagnosticCheck, DiagnosticReport
 from buddy_cli.editor import EditorError
+from buddy_cli.updater import (
+    ReleaseAsset,
+    UpdateError,
+    UpdateInfo,
+    UpdateOutcome,
+)
 
 
 class StubInput(io.StringIO):
@@ -22,6 +28,31 @@ class StubInput(io.StringIO):
 
     def isatty(self) -> bool:
         return self._is_tty
+
+
+def available_update(
+    *,
+    current_version: str = "0.3.4",
+    latest_version: str = "0.3.5",
+) -> UpdateInfo:
+    package = "buddy-linux-x64.tar.gz"
+    base_url = (
+        f"https://github.com/sarankars/buddy_cli/releases/download/v{latest_version}/"
+    )
+    return UpdateInfo(
+        current_version=current_version,
+        latest_version=latest_version,
+        release_url=(
+            f"https://github.com/sarankars/buddy_cli/releases/tag/v{latest_version}"
+        ),
+        package=ReleaseAsset(package, f"{base_url}{package}", 100),
+        checksum=ReleaseAsset(
+            f"{package}.sha256",
+            f"{base_url}{package}.sha256",
+            90,
+        ),
+        archive_type="tgz",
+    )
 
 
 class CliTests(unittest.TestCase):
@@ -187,6 +218,116 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertTrue(json.loads(stdout.getvalue())["healthy"])
+
+    def test_update_check_reports_an_available_release_without_installing(self) -> None:
+        stdout = io.StringIO()
+        updater = MagicMock()
+        updater.check.return_value = available_update()
+
+        exit_code = main(
+            ["update", "--check"],
+            output_stream=stdout,
+            services=SimpleNamespace(updater=updater),
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("0.3.5 is available", stdout.getvalue())
+        self.assertIn("releases/tag/v0.3.5", stdout.getvalue())
+        updater.install.assert_not_called()
+
+    def test_update_reports_when_buddy_is_up_to_date(self) -> None:
+        stdout = io.StringIO()
+        updater = MagicMock()
+        updater.check.return_value = available_update(latest_version="0.3.4")
+
+        exit_code = main(
+            ["update"],
+            output_stream=stdout,
+            services=SimpleNamespace(updater=updater),
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Buddy 0.3.4 is up to date", stdout.getvalue())
+        updater.install.assert_not_called()
+
+    def test_update_yes_installs_without_interactive_confirmation(self) -> None:
+        stdout = io.StringIO()
+        updater = MagicMock()
+        updater.check.return_value = available_update()
+        updater.install.return_value = UpdateOutcome(
+            "Buddy was updated to 0.3.5.",
+            restart_required=True,
+        )
+
+        exit_code = main(
+            ["update", "--yes"],
+            input_stream=StubInput(""),
+            output_stream=stdout,
+            services=SimpleNamespace(updater=updater),
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Buddy was updated to 0.3.5", stdout.getvalue())
+        updater.install.assert_called_once()
+        self.assertIn("progress", updater.install.call_args.kwargs)
+
+    def test_update_requires_confirmation_for_noninteractive_install(self) -> None:
+        stderr = io.StringIO()
+        updater = MagicMock()
+        updater.check.return_value = available_update()
+
+        exit_code = main(
+            ["update"],
+            input_stream=StubInput(""),
+            output_stream=io.StringIO(),
+            error_stream=stderr,
+            services=SimpleNamespace(updater=updater),
+        )
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("buddy update --yes", stderr.getvalue())
+        updater.install.assert_not_called()
+
+    def test_update_installs_after_interactive_confirmation(self) -> None:
+        stdout = io.StringIO()
+        updater = MagicMock()
+        updater.check.return_value = available_update()
+        updater.install.return_value = UpdateOutcome("Update installed")
+
+        exit_code = main(
+            ["update"],
+            input_stream=StubInput("yes\n", is_tty=True),
+            output_stream=stdout,
+            services=SimpleNamespace(updater=updater),
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Install Buddy 0.3.5?", stdout.getvalue())
+        updater.install.assert_called_once()
+
+    def test_update_reports_check_and_install_failures(self) -> None:
+        for failure_at in ("check", "install"):
+            with self.subTest(failure_at=failure_at):
+                stderr = io.StringIO()
+                updater = MagicMock()
+                updater.check.return_value = available_update()
+                if failure_at == "check":
+                    updater.check.side_effect = UpdateError("network unavailable")
+                    arguments = ["update", "--check"]
+                else:
+                    updater.install.side_effect = UpdateError("signature invalid")
+                    arguments = ["update", "--yes"]
+
+                exit_code = main(
+                    arguments,
+                    input_stream=StubInput(""),
+                    output_stream=io.StringIO(),
+                    error_stream=stderr,
+                    services=SimpleNamespace(updater=updater),
+                )
+
+                self.assertEqual(exit_code, 1)
+                self.assertIn("failed", stderr.getvalue())
 
     def test_enhance_uses_configured_ollama(self) -> None:
         stdout = io.StringIO()

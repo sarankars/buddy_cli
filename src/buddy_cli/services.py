@@ -9,6 +9,7 @@ from buddy_cli.doctor import Doctor
 from buddy_cli.paths import AppPaths
 from buddy_cli.provisioning import Provisioner
 from buddy_cli.runtime_manager import RuntimeManager
+from buddy_cli.updater import Updater
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class Services:
     runtime_manager: RuntimeManager
     provisioner: Provisioner
     doctor: Doctor
+    updater: Updater
 
 
 def build_services() -> Services:
@@ -30,4 +32,5 @@ def build_services() -> Services:
         runtime_manager=runtime_manager,
         provisioner=Provisioner(paths, config_store, runtime_manager),
         doctor=Doctor(paths, config_store, runtime_manager),
+        updater=Updater(paths),
     )

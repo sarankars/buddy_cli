@@ -18,6 +18,7 @@ from buddy_cli.ollama import OllamaClient, OllamaError
 from buddy_cli.provisioning import ProvisioningError, SetupCancelled
 from buddy_cli.runtime_manifest import format_bytes
 from buddy_cli.services import Services, build_services
+from buddy_cli.updater import UpdateError
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -85,6 +86,26 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Return the diagnostic report as JSON.",
     )
+
+    update_parser = subparsers.add_parser(
+        "update",
+        help="Check for and install a newer Buddy release.",
+        description=(
+            "Check the latest stable Buddy release and securely update a standalone "
+            "installation when a newer version is available."
+        ),
+    )
+    update_options = update_parser.add_mutually_exclusive_group()
+    update_options.add_argument(
+        "--check",
+        action="store_true",
+        help="Check for an update without downloading or installing it.",
+    )
+    update_options.add_argument(
+        "--yes",
+        action="store_true",
+        help="Install an available update without asking for confirmation.",
+    )
     return parser
 
 
@@ -118,6 +139,7 @@ class TerminalUI:
     assume_yes: bool = False
     _last_download_percent: int = -1
     _last_model_percent: int = -1
+    _last_update_percent: int = -1
     _download_started_at: Optional[float] = None
     _download_started_bytes: int = 0
     _last_download_report_at: float = 0.0
@@ -196,6 +218,19 @@ class TerminalUI:
             )
         elif status in {"pulling manifest", "verifying sha256 digest", "success"}:
             self.emit(f"Model: {status}")
+
+    def update_progress(self, completed: int, total: Optional[int]) -> None:
+        if total:
+            percent = min(100, int(completed * 100 / total))
+            if percent == self._last_update_percent:
+                return
+            self._last_update_percent = percent
+            self.emit(
+                f"Update download {percent}% "
+                f"({format_bytes(completed)} of {format_bytes(total)})"
+            )
+        elif completed:
+            self.emit(f"Update download {format_bytes(completed)}")
 
 
 def _run_setup(
@@ -333,6 +368,62 @@ def _run_doctor(
     return 0 if report.healthy else 1
 
 
+def _run_update(
+    args: argparse.Namespace,
+    services: Services,
+    stdin: TextIO,
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    ui = TerminalUI(stdin, stdout, assume_yes=args.yes)
+    try:
+        info = services.updater.check()
+    except UpdateError as exc:
+        print(f"buddy: update check failed: {exc}", file=stderr)
+        return 1
+
+    if info.current_is_newer:
+        ui.emit(
+            f"Buddy {info.current_version} is newer than the latest stable release "
+            f"({info.latest_version})"
+        )
+        return 0
+    if not info.update_available:
+        ui.emit(f"Buddy {info.current_version} is up to date")
+        return 0
+
+    ui.emit(
+        f"Buddy {info.latest_version} is available (current: {info.current_version})"
+    )
+    ui.emit(f"Release: {info.release_url}")
+    if args.check:
+        return 0
+
+    if not args.yes:
+        if not stdin.isatty():
+            print(
+                "buddy: update requires confirmation; rerun with 'buddy update --yes' "
+                "in non-interactive environments",
+                file=stderr,
+            )
+            return 2
+        if not ui.confirm(f"Install Buddy {info.latest_version}?", False):
+            ui.emit("Update cancelled")
+            return 0
+
+    try:
+        outcome = services.updater.install(
+            info,
+            progress=ui.update_progress,
+            status=ui.emit,
+        )
+    except UpdateError as exc:
+        print(f"buddy: update failed: {exc}", file=stderr)
+        return 1
+    ui.emit(outcome.message)
+    return 0
+
+
 def main(
     argv: Optional[Sequence[str]] = None,
     *,
@@ -355,6 +446,8 @@ def main(
         return _run_enhance(args, app_services, stdin, stdout, stderr)
     if args.command == "doctor":
         return _run_doctor(args, app_services, stdout)
+    if args.command == "update":
+        return _run_update(args, app_services, stdin, stdout, stderr)
 
     parser.error(f"unknown command: {args.command}")
     return 2

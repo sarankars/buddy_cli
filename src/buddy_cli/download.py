@@ -92,6 +92,7 @@ def download_verified(
     max_attempts: int = 4,
     low_speed_limit: int = 16 * 1024,
     low_speed_window: int = 30,
+    resume_command: str = "buddy setup",
 ) -> Path:
     """Download, resume, and publish a file after SHA-256 verification."""
     if max_attempts < 1:
@@ -173,7 +174,7 @@ def download_verified(
                 if _retryable(exc):
                     raise DownloadError(
                         f"download stalled after {max_attempts} attempts; "
-                        "run 'buddy setup' again to resume"
+                        f"run '{resume_command}' again to resume"
                     ) from exc
                 raise
 

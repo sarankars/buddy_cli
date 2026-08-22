@@ -32,6 +32,10 @@ class AppPaths:
         return self.root / "downloads"
 
     @property
+    def updates_dir(self) -> Path:
+        return self.root / "updates"
+
+    @property
     def logs_dir(self) -> Path:
         return self.root / "logs"
 
@@ -49,6 +53,7 @@ class AppPaths:
             self.runtimes_dir,
             self.models_dir,
             self.downloads_dir,
+            self.updates_dir,
             self.logs_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)

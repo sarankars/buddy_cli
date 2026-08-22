@@ -28,6 +28,14 @@ class AppPathsTests(unittest.TestCase):
         self.assertEqual(mac.root, home / "Library" / "Application Support" / "Buddy")
         self.assertEqual(linux.root, home / ".local" / "share" / "buddy")
 
+    def test_ensure_directories_creates_update_storage(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            paths = AppPaths(Path(temporary_directory) / "buddy")
+
+            paths.ensure_directories()
+
+            self.assertTrue(paths.updates_dir.is_dir())
+
 
 class ConfigStoreTests(unittest.TestCase):
     def test_round_trip(self) -> None:
