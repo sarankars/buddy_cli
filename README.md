@@ -114,6 +114,18 @@ executable includes Python and Buddy's Python dependencies. Ollama and the model
 remain first-run downloads managed by `buddy setup`, keeping the Buddy download
 itself reasonably small.
 
+Official macOS releases are Developer ID-signed, notarized, and distributed as
+installer packages. Download the package matching the Mac's architecture and
+open it, or install it from Terminal:
+
+```bash
+sudo installer -pkg buddy-macos-arm64.pkg -target /
+buddy --version
+```
+
+The package installs `buddy` in `/usr/local/bin` and carries a stapled Apple
+notarization ticket for Gatekeeper verification.
+
 ## GitHub Actions
 
 Every push to `main` runs the test suite on the minimum supported Python version
@@ -121,7 +133,9 @@ and the latest stable Python version, along with formatting, lint, compilation,
 and dependency checks.
 
 Pushing a matching semantic-version tag builds and smoke-tests standalone
-archives for macOS Intel and ARM64, Windows x64 and ARM64, and Linux x64 and
-ARM64. After every job succeeds, GitHub Actions verifies SHA-256 checksums and
-publishes the archives and checksums in a GitHub Release. See the
+packages for macOS Intel and ARM64, Windows x64 and ARM64, and Linux x64 and
+ARM64. The macOS packages must pass Developer ID signing, Apple notarization,
+ticket stapling, and Gatekeeper assessment. After every job succeeds, GitHub
+Actions verifies SHA-256 checksums and publishes the packages and checksums in a
+GitHub Release. See the
 [maintainer release guide](docs/releases.md) for the complete process.

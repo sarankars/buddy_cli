@@ -57,11 +57,11 @@ jobs:
           - target: macos-x64
             runner: macos-15-intel
             python-architecture: x64
-            archive: release/buddy-macos-x64.tar.gz
+            archive: release/buddy-macos-x64.pkg
           - target: macos-arm64
             runner: macos-15
             python-architecture: arm64
-            archive: release/buddy-macos-arm64.tar.gz
+            archive: release/buddy-macos-arm64.pkg
           - target: windows-x64
             runner: windows-2025
             python-architecture: x64
@@ -96,10 +96,158 @@ jobs:
       - name: Show build platform
         run: python -c "import platform; print(platform.platform(), platform.machine())"
 
+      - name: Import Apple Developer ID certificates
+        if: runner.os == 'macOS'
+        env:
+          APP_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64 }}
+          APP_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_P12_PASSWORD }}
+          INSTALLER_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_INSTALLER_P12_BASE64 }}
+          INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_INSTALLER_P12_PASSWORD }}
+        run: |
+          for required in \
+            APP_CERTIFICATE_BASE64 \
+            APP_CERTIFICATE_PASSWORD \
+            INSTALLER_CERTIFICATE_BASE64 \
+            INSTALLER_CERTIFICATE_PASSWORD
+          do
+            if [ -z "${!required}" ]; then
+              echo "Required Apple signing secret is missing: $required" >&2
+              exit 1
+            fi
+          done
+
+          app_certificate_path="$RUNNER_TEMP/developer-id-application.p12"
+          installer_certificate_path="$RUNNER_TEMP/developer-id-installer.p12"
+          keychain_path="$RUNNER_TEMP/buddy-signing.keychain-db"
+          keychain_password=$(openssl rand -base64 32)
+
+          printf '%s' "$APP_CERTIFICATE_BASE64" | \
+            base64 --decode -o "$app_certificate_path"
+          printf '%s' "$INSTALLER_CERTIFICATE_BASE64" | \
+            base64 --decode -o "$installer_certificate_path"
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$app_certificate_path" \
+            -P "$APP_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 \
+            -k "$keychain_path"
+          security import "$installer_certificate_path" \
+            -P "$INSTALLER_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 \
+            -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$keychain_password" "$keychain_path"
+          security list-keychain -d user -s "$keychain_path"
+
+          application_identity=$(security find-certificate \
+            -c "Developer ID Application" -p "$keychain_path" | \
+            openssl x509 -noout -subject -nameopt multiline | \
+            sed -n 's/^[[:space:]]*commonName[[:space:]]*=[[:space:]]*//p' | \
+            head -n 1)
+          installer_identity=$(security find-certificate \
+            -c "Developer ID Installer" -p "$keychain_path" | \
+            openssl x509 -noout -subject -nameopt multiline | \
+            sed -n 's/^[[:space:]]*commonName[[:space:]]*=[[:space:]]*//p' | \
+            head -n 1)
+          if [ -z "$application_identity" ] || [ -z "$installer_identity" ]; then
+            echo "Imported certificates do not contain both Developer ID identities" >&2
+            exit 1
+          fi
+          {
+            echo "APPLE_APPLICATION_IDENTITY=$application_identity"
+            echo "APPLE_INSTALLER_IDENTITY=$installer_identity"
+          } >> "$GITHUB_ENV"
+
+      - name: Build signed macOS executable
+        if: runner.os == 'macOS'
+        run: >-
+          python scripts/build_standalone.py
+          --codesign-identity "$APPLE_APPLICATION_IDENTITY"
+
       - name: Build standalone executable
+        if: runner.os != 'macOS'
         run: python scripts/build_standalone.py
 
-      - name: Smoke-test executable
+      - name: Verify and smoke-test signed macOS executable
+        if: runner.os == 'macOS'
+        run: |
+          codesign --verify --deep --strict --verbose=4 dist/buddy
+          codesign --display --verbose=4 dist/buddy
+          ./dist/buddy --version
+
+      - name: Package signed macOS installer
+        if: runner.os == 'macOS'
+        run: >-
+          python scripts/package_macos_installer.py
+          --target "${{ matrix.target }}"
+          --version "${{ needs.validate.outputs.version }}"
+          --signing-identity "$APPLE_INSTALLER_IDENTITY"
+
+      - name: Verify macOS installer signature
+        if: runner.os == 'macOS'
+        run: pkgutil --check-signature "${{ matrix.archive }}"
+
+      - name: Notarize macOS installer
+        if: runner.os == 'macOS'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          for required in APPLE_ID APPLE_TEAM_ID APPLE_APP_SPECIFIC_PASSWORD
+          do
+            if [ -z "${!required}" ]; then
+              echo "Required Apple notarization secret is missing: $required" >&2
+              exit 1
+            fi
+          done
+
+          result_path="$RUNNER_TEMP/notary-result.json"
+          xcrun notarytool submit "${{ matrix.archive }}" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait \
+            --output-format json > "$result_path"
+          cat "$result_path"
+
+          submission_id=$(python -c \
+            "import json; print(json.load(open('$result_path'))['id'])")
+          status=$(python -c \
+            "import json; print(json.load(open('$result_path'))['status'])")
+          if [ "$status" != "Accepted" ]; then
+            echo "Apple notarization did not succeed: $status" >&2
+            exit 1
+          fi
+
+          log_path="$RUNNER_TEMP/notary-log.json"
+          xcrun notarytool log "$submission_id" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            "$log_path"
+          cat "$log_path"
+          python - "$log_path" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              issues = json.load(handle).get("issues") or []
+          if issues:
+              raise SystemExit("Apple notarization log contains issues")
+          PY
+
+      - name: Staple and assess macOS installer
+        if: runner.os == 'macOS'
+        run: |
+          xcrun stapler staple -v "${{ matrix.archive }}"
+          xcrun stapler validate -v "${{ matrix.archive }}"
+          pkgutil --check-signature "${{ matrix.archive }}"
+          spctl --assess --type install --verbose=4 "${{ matrix.archive }}"
+          python scripts/checksum.py "${{ matrix.archive }}"
+
+      - name: Smoke-test and package executable
+        if: runner.os != 'macOS'
         run: python scripts/package_standalone.py --target ${{ matrix.target }} --smoke-test
 
       - name: Upload binary

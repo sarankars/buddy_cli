@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import os
 import re
 import subprocess
@@ -12,16 +11,7 @@ import zipfile
 from pathlib import Path
 from typing import Optional, Sequence
 
-
-def write_checksum(archive: Path) -> Path:
-    """Write a sha256sum-compatible checksum beside an archive."""
-    digest = hashlib.sha256()
-    with archive.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    checksum = archive.with_name(f"{archive.name}.sha256")
-    checksum.write_bytes(f"{digest.hexdigest()}  {archive.name}\n".encode("ascii"))
-    return checksum
+from scripts.checksum import write_checksum
 
 
 def package_binary(

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.package_standalone import write_checksum
+from scripts.checksum import write_checksum
 from scripts.verify_release_assets import (
     RELEASE_ARCHIVES,
     ReleaseAssetError,

@@ -7,7 +7,8 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from scripts.package_standalone import package_binary, write_checksum
+from scripts.checksum import write_checksum
+from scripts.package_standalone import package_binary
 
 
 class PackageStandaloneTests(unittest.TestCase):
