@@ -64,11 +64,23 @@ class OllamaClientTests(unittest.TestCase):
 
     def test_generates_an_enhanced_prompt(self) -> None:
         client = OllamaClient("http://127.0.0.1:11434")
+        schema = {"type": "object"}
         with patch.object(
             client,
             "_open",
             return_value=FakeResponse(b'{"response":"Clear prompt"}'),
-        ):
-            result = client.generate("model", "rough", system="rewrite")
+        ) as open_request:
+            result = client.generate(
+                "model",
+                "rough",
+                system="rewrite",
+                response_format=schema,
+                options={"temperature": 0, "seed": 42},
+            )
 
         self.assertEqual(result, "Clear prompt")
+        payload = open_request.call_args.args[1]
+        self.assertEqual(payload["format"], schema)
+        self.assertEqual(payload["options"]["temperature"], 0)
+        self.assertEqual(payload["options"]["seed"], 42)
+        self.assertEqual(payload["options"]["num_predict"], 512)

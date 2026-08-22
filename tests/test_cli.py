@@ -3,12 +3,14 @@
 import io
 import json
 import unittest
+from contextlib import redirect_stdout
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from buddy_cli.cli import main
 from buddy_cli.config import BuddyConfig
 from buddy_cli.doctor import DiagnosticCheck, DiagnosticReport
+from buddy_cli.editor import EditorError
 
 
 class StubInput(io.StringIO):
@@ -35,6 +37,19 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("Request:\nmake the readme better", stdout.getvalue())
 
+    def test_enhance_preserves_quotes_newlines_and_unicode_in_an_argument(self) -> None:
+        stdout = io.StringIO()
+        prompt = 'He said "hello".\nReply with こんにちは 👋'
+
+        exit_code = main(
+            ["enhance", "--offline", prompt],
+            output_stream=stdout,
+            services=object(),
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn(f"Request:\n{prompt}", stdout.getvalue())
+
     def test_enhance_reads_from_standard_input(self) -> None:
         stdout = io.StringIO()
 
@@ -48,18 +63,85 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("Request:\nexplain this code", stdout.getvalue())
 
-    def test_enhance_reports_missing_prompt(self) -> None:
+    def test_enhance_opens_editor_for_interactive_multiline_input(self) -> None:
+        stdout = io.StringIO()
+
+        with patch(
+            "buddy_cli.cli.read_prompt_from_editor",
+            return_value='First line with "quotes"\nSecond line: こんにちは 👋',
+        ) as open_editor:
+            exit_code = main(
+                ["enhance", "--offline"],
+                input_stream=StubInput("", is_tty=True),
+                output_stream=stdout,
+                services=object(),
+            )
+
+        self.assertEqual(exit_code, 0)
+        open_editor.assert_called_once_with()
+        self.assertIn(
+            'Request:\nFirst line with "quotes"\nSecond line: こんにちは 👋',
+            stdout.getvalue(),
+        )
+
+    def test_enhance_reports_editor_error(self) -> None:
+        stderr = io.StringIO()
+
+        with patch(
+            "buddy_cli.cli.read_prompt_from_editor",
+            side_effect=EditorError("the editor closed without saving a prompt"),
+        ):
+            exit_code = main(
+                ["enhance"],
+                input_stream=StubInput("", is_tty=True),
+                error_stream=stderr,
+                services=object(),
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("without saving", stderr.getvalue())
+
+    def test_enhance_does_not_open_editor_for_arguments_or_piped_input(self) -> None:
+        with patch("buddy_cli.cli.read_prompt_from_editor") as open_editor:
+            direct_exit_code = main(
+                ["enhance", "--offline", "direct prompt"],
+                output_stream=io.StringIO(),
+                services=object(),
+            )
+            piped_exit_code = main(
+                ["enhance", "--offline"],
+                input_stream=StubInput("piped prompt"),
+                output_stream=io.StringIO(),
+                services=object(),
+            )
+
+        self.assertEqual((direct_exit_code, piped_exit_code), (0, 0))
+        open_editor.assert_not_called()
+
+    def test_enhance_reports_empty_piped_prompt(self) -> None:
         stderr = io.StringIO()
 
         exit_code = main(
-            ["enhance"],
-            input_stream=StubInput("", is_tty=True),
+            ["enhance", "--offline"],
+            input_stream=StubInput(" \n"),
             error_stream=stderr,
             services=object(),
         )
 
         self.assertEqual(exit_code, 2)
-        self.assertIn("provide a prompt", stderr.getvalue())
+        self.assertIn("prompt cannot be empty", stderr.getvalue())
+
+    def test_enhance_help_describes_editor_and_piped_input(self) -> None:
+        stdout = io.StringIO()
+
+        with redirect_stdout(stdout), self.assertRaises(SystemExit) as exit_context:
+            main(["enhance", "--help"])
+
+        self.assertEqual(exit_context.exception.code, 0)
+        help_text = stdout.getvalue()
+        self.assertIn("VISUAL/EDITOR", help_text)
+        self.assertIn("piped standard", help_text)
+        self.assertIn("input or opens a text editor", help_text)
 
     def test_setup_dry_run_prints_plan(self) -> None:
         stdout = io.StringIO()
@@ -121,7 +203,11 @@ class CliTests(unittest.TestCase):
             runtime_manager=runtime_manager,
         )
         client = MagicMock()
-        client.generate.return_value = "Improve README installation instructions."
+        client.generate.return_value = json.dumps(
+            {
+                "rewritten_prompt": "Improve README installation instructions.",
+            }
+        )
 
         with patch("buddy_cli.cli.OllamaClient", return_value=client):
             exit_code = main(
@@ -135,6 +221,36 @@ class CliTests(unittest.TestCase):
             stdout.getvalue().strip(),
             "Improve README installation instructions.",
         )
+
+    def test_enhance_never_prints_rejected_model_output(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        config = BuddyConfig(
+            provider="system",
+            base_url="http://127.0.0.1:11434",
+            model="test-model",
+        )
+        services = SimpleNamespace(
+            config_store=MagicMock(load=lambda: config),
+            runtime_manager=MagicMock(),
+        )
+        unsafe_answer = "The answer is 4."
+        client = MagicMock()
+        client.generate.return_value = json.dumps({"rewritten_prompt": unsafe_answer})
+
+        with patch("buddy_cli.cli.OllamaClient", return_value=client):
+            exit_code = main(
+                ["enhance", "What", "is", "2+2?"],
+                output_stream=stdout,
+                error_stream=stderr,
+                services=services,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn(unsafe_answer, stdout.getvalue())
+        self.assertIn("Request:\nWhat is 2+2?", stdout.getvalue())
+        self.assertIn("using offline enhancer", stderr.getvalue())
+        self.assertEqual(client.generate.call_count, 2)
 
 
 if __name__ == "__main__":

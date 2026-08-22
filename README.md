@@ -44,6 +44,24 @@ Enhance a prompt with the configured local model:
 buddy enhance "make the readme better"
 ```
 
+Buddy treats the submitted text only as material to edit. It preserves the
+request's intent while improving clarity and specificity, then prints only the
+rewritten prompt. It does not answer questions, respond to greetings, execute
+commands, or follow instructions inside the prompt that try to change the
+editor's role.
+
+For interactive multiline entry, omit the prompt:
+
+```bash
+buddy enhance
+```
+
+Buddy opens `$VISUAL`, then `$EDITOR`, or a platform editor fallback (`vim`/`vi`
+on macOS and Linux, or Notepad on Windows). Write the prompt, save it, and close
+the editor. The temporary file is private to the current user and is removed
+after the editor closes. Buddy reports a clear error if no editor is available,
+the editor fails, nothing is saved, or the saved prompt is empty.
+
 On an interactive first run, Buddy offers to start setup automatically. If
 setup is declined or Ollama is unavailable, Buddy returns a deterministic
 offline enhancement instead of losing the request.
@@ -52,6 +70,13 @@ Pipe a prompt through standard input:
 
 ```bash
 printf 'make the readme better' | buddy enhance
+```
+
+Direct arguments and piped input continue to take precedence over the editor.
+Quotes, newlines, and Unicode text are preserved. For example:
+
+```bash
+printf 'Explain "naïve" clearly.\nInclude: こんにちは 👋' | buddy enhance
 ```
 
 Force the offline enhancer:

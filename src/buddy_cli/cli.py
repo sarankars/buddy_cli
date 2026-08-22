@@ -12,6 +12,7 @@ from typing import Optional, Sequence, TextIO
 from buddy_cli import __version__
 from buddy_cli.config import ConfigError
 from buddy_cli.constants import DEFAULT_MODEL
+from buddy_cli.editor import EditorError, read_prompt_from_editor
 from buddy_cli.enhancer import EmptyPromptError, OllamaEnhancer, RuleBasedEnhancer
 from buddy_cli.ollama import OllamaClient, OllamaError
 from buddy_cli.provisioning import ProvisioningError, SetupCancelled
@@ -56,11 +57,18 @@ def build_parser() -> argparse.ArgumentParser:
     enhance_parser = subparsers.add_parser(
         "enhance",
         help="Improve a rough prompt.",
+        description=(
+            "Improve a rough prompt. With no prompt argument, read piped input or "
+            "open VISUAL/EDITOR for interactive multiline entry."
+        ),
     )
     enhance_parser.add_argument(
         "prompt",
         nargs="*",
-        help="Prompt to enhance. When omitted, Buddy reads from standard input.",
+        help=(
+            "Prompt to enhance. When omitted, Buddy reads piped standard input or "
+            "opens a text editor on an interactive terminal."
+        ),
     )
     enhance_parser.add_argument(
         "--offline",
@@ -82,13 +90,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _read_prompt(parts: Sequence[str], input_stream: TextIO) -> str:
     if parts:
-        return " ".join(parts)
+        prompt = " ".join(parts)
+    elif input_stream.isatty():
+        prompt = read_prompt_from_editor()
+    else:
+        prompt = input_stream.read()
 
-    if input_stream.isatty():
-        raise EmptyPromptError(
-            "provide a prompt as an argument or pipe one through standard input"
-        )
-    return input_stream.read()
+    if not prompt.strip():
+        raise EmptyPromptError("the prompt cannot be empty")
+    return prompt
 
 
 def _format_duration(seconds: int) -> str:
@@ -258,7 +268,7 @@ def _run_enhance(
 ) -> int:
     try:
         prompt = _read_prompt(args.prompt, stdin)
-    except EmptyPromptError as exc:
+    except (EditorError, EmptyPromptError) as exc:
         print(f"buddy: error: {exc}", file=stderr)
         return 2
 

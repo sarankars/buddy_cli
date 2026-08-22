@@ -22,6 +22,21 @@ Buddy follows these rules when it provisions Ollama and the enhancement model:
    checksum-mismatched files.
 10. Fall back to the deterministic offline enhancer when local AI is unavailable.
 
+## Prompt input and editing contract
+
+`buddy enhance "prompt"` enhances its command arguments, while redirected
+standard input is read when no arguments are present. On an interactive terminal
+with neither source, Buddy opens `$VISUAL`, then `$EDITOR`, and finally a
+platform-appropriate fallback. Editor input is collected in a private temporary
+file that is removed after use, including when the editor fails.
+
+The local model receives the original prompt as JSON-encoded, untrusted editing
+material. A system instruction restricts it to prompt editing, structured output
+constrains the response shape, and deterministic generation settings reduce
+variation. Buddy validates the response and retries once when the model emits an
+answer, conversational reply, malformed structure, or empty rewrite. A second
+invalid response is discarded and the existing deterministic enhancer is used.
+
 ## First-run flow
 
 ```text

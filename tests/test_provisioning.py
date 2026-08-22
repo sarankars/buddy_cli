@@ -1,5 +1,6 @@
 """Tests for Buddy setup orchestration."""
 
+import json
 import tempfile
 import unittest
 from collections import namedtuple
@@ -30,9 +31,17 @@ class FakeOllamaClient:
         if progress:
             progress("success", None, None)
 
-    def generate(self, model: str, prompt: str, *, system: str) -> str:
-        self.generated.append((model, prompt, system))
-        return "Say hello clearly."
+    def generate(
+        self,
+        model: str,
+        prompt: str,
+        *,
+        system: str,
+        response_format=None,
+        options=None,
+    ) -> str:
+        self.generated.append((model, prompt, system, response_format, options))
+        return json.dumps({"rewritten_prompt": "Write a clearer greeting."})
 
 
 class ProvisionerTests(unittest.TestCase):
@@ -61,6 +70,8 @@ class ProvisionerTests(unittest.TestCase):
             self.assertFalse(result.installed_runtime)
             self.assertTrue(result.installed_model)
             self.assertEqual(client.pulled, ["test-model"])
+            self.assertEqual(client.generated[0][0], "test-model")
+            self.assertEqual(client.generated[0][4]["temperature"], 0)
             self.assertEqual(store.load().provider, "system")
             manager.start.assert_called_once_with(selection)
 

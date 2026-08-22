@@ -128,18 +128,31 @@ class OllamaClient:
         if not self.has_model(model):
             raise OllamaError(f"Ollama did not finish downloading {model}")
 
-    def generate(self, model: str, prompt: str, *, system: str) -> str:
+    def generate(
+        self,
+        model: str,
+        prompt: str,
+        *,
+        system: str,
+        response_format: Optional[Dict[str, object]] = None,
+        options: Optional[Dict[str, object]] = None,
+    ) -> str:
+        generation_options: Dict[str, object] = {
+            "temperature": 0.1,
+            "num_predict": 512,
+        }
+        if options:
+            generation_options.update(options)
         payload: Dict[str, object] = {
             "model": model,
             "prompt": prompt,
             "system": system,
             "stream": False,
             "keep_alive": "5m",
-            "options": {
-                "temperature": 0.1,
-                "num_predict": 512,
-            },
+            "options": generation_options,
         }
+        if response_format is not None:
+            payload["format"] = response_format
         with self._open("/api/generate", payload) as response:
             value = self._decode_json(response.read())
         generated = value.get("response")

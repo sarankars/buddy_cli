@@ -9,6 +9,7 @@ from typing import Callable, List, Optional
 from buddy_cli.config import BuddyConfig, ConfigError, ConfigStore
 from buddy_cli.constants import DEFAULT_MODEL, MODEL_DOWNLOAD_ESTIMATE_BYTES
 from buddy_cli.download import DownloadError, DownloadProgress
+from buddy_cli.enhancer import OllamaEnhancer
 from buddy_cli.ollama import ModelProgress, OllamaClient, OllamaError
 from buddy_cli.paths import AppPaths
 from buddy_cli.runtime_manager import RuntimeManager
@@ -37,9 +38,6 @@ class SetupResult:
 class Provisioner:
     """Provision an Ollama runtime and prompt-enhancement model."""
 
-    SMOKE_TEST_SYSTEM = (
-        "Rewrite rough prompts. Return only the improved prompt and never answer it."
-    )
     FREE_SPACE_BUFFER_BYTES = 500_000_000
 
     def __init__(
@@ -177,11 +175,7 @@ class Provisioner:
             emit(f"Model {model} is already installed")
 
         try:
-            client.generate(
-                model,
-                "say hello more clearly",
-                system=self.SMOKE_TEST_SYSTEM,
-            )
+            OllamaEnhancer(client, model).enhance("say hello more clearly")
         except OllamaError as exc:
             raise ProvisioningError(f"enhancement smoke test failed: {exc}") from exc
 
