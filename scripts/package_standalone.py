@@ -20,7 +20,7 @@ def write_checksum(archive: Path) -> Path:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     checksum = archive.with_name(f"{archive.name}.sha256")
-    checksum.write_text(f"{digest.hexdigest()}  {archive.name}\n", encoding="utf-8")
+    checksum.write_bytes(f"{digest.hexdigest()}  {archive.name}\n".encode("ascii"))
     return checksum
 
 

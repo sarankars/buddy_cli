@@ -27,10 +27,9 @@ class PackageStandaloneTests(unittest.TestCase):
                 extracted = bundle.extractfile(member)
                 self.assertIsNotNone(extracted)
                 self.assertEqual(extracted.read(), b"standalone")
-            self.assertRegex(
-                archive.with_name(f"{archive.name}.sha256").read_text(),
-                rf"^[0-9a-f]{{64}}  {archive.name}\n$",
-            )
+            checksum = archive.with_name(f"{archive.name}.sha256").read_bytes()
+            self.assertRegex(checksum, rb"^[0-9a-f]{64}  buddy-linux-x64\.tar\.gz\n$")
+            self.assertNotIn(b"\r", checksum)
 
     def test_packages_windows_binary_as_zip(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

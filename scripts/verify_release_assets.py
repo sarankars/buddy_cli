@@ -46,13 +46,12 @@ def verify_release_assets(directory: Path) -> Path:
         archive = directory / archive_name
         expected_line = f"{sha256_file(archive)}  {archive_name}"
         checksum_file = directory / f"{archive_name}.sha256"
-        actual_line = checksum_file.read_text(encoding="utf-8").strip()
-        if actual_line != expected_line:
+        if checksum_file.read_bytes() != f"{expected_line}\n".encode("ascii"):
             raise ReleaseAssetError(f"checksum verification failed: {archive_name}")
         checksum_lines.append(f"{expected_line}\n")
 
     combined = directory / "SHA256SUMS"
-    combined.write_text("".join(checksum_lines), encoding="utf-8")
+    combined.write_bytes("".join(checksum_lines).encode("ascii"))
     return combined
 
 

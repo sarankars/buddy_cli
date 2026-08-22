@@ -49,6 +49,16 @@ class VerifyReleaseAssetsTests(unittest.TestCase):
             with self.assertRaisesRegex(ReleaseAssetError, "checksum verification"):
                 verify_release_assets(root)
 
+    def test_rejects_non_portable_checksum_line_endings(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            create_release_assets(root)
+            checksum = root / f"{RELEASE_ARCHIVES[0]}.sha256"
+            checksum.write_bytes(checksum.read_bytes().replace(b"\n", b"\r\n"))
+
+            with self.assertRaisesRegex(ReleaseAssetError, "checksum verification"):
+                verify_release_assets(root)
+
 
 if __name__ == "__main__":
     unittest.main()
