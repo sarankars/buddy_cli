@@ -289,7 +289,9 @@ jobs:
           bin="target/${{ matrix.rust-target }}/release/buddy"
           mkdir -p release
           tar -czf "${{ matrix.archive }}" -C "$(dirname $bin)" buddy
-          sha256sum "${{ matrix.archive }}" | sed 's|.*/||' > "${{ matrix.archive }}.sha256"
+          name="$(basename "${{ matrix.archive }}")"
+          digest=$(sha256sum "${{ matrix.archive }}" | awk '{print $1}')
+          printf '%s  %s\n' "$digest" "$name" > "${{ matrix.archive }}.sha256"
 
       - name: Upload binary
         uses: actions/upload-artifact@v7
