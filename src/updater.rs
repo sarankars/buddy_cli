@@ -558,6 +558,13 @@ impl Updater {
     }
 
     fn install_macos(&self, package: &Path, version: &str) -> Result<UpdateOutcome, UpdateError> {
+        if !package.is_file() {
+            return Err(UpdateError(format!(
+                "the macOS installer package was not found at {}",
+                package.display()
+            )));
+        }
+
         let sig_output = Command::new("/usr/sbin/pkgutil")
             .arg("--check-signature")
             .arg(package)
@@ -582,16 +589,26 @@ impl Updater {
             ));
         }
 
-        let open_output = Command::new("/usr/bin/open")
-            .arg("-W")
+        let installer_output = Command::new("/usr/sbin/installer")
+            .args(["-pkg"])
             .arg(package)
+            .args(["-target", "/"])
             .output()
-            .map_err(|e| UpdateError(format!("could not open the macOS installer: {}", e)))?;
+            .map_err(|e| UpdateError(format!("could not run the macOS installer: {}", e)))?;
 
-        if !open_output.status.success() {
-            return Err(UpdateError(
-                "the macOS installer exited unsuccessfully".to_string(),
-            ));
+        if !installer_output.status.success() {
+            let detail = String::from_utf8_lossy(&installer_output.stderr)
+                .trim()
+                .to_string();
+            let suffix = if detail.is_empty() {
+                String::new()
+            } else {
+                format!(": {}", detail)
+            };
+            return Err(UpdateError(format!(
+                "the macOS installer exited unsuccessfully{}",
+                suffix
+            )));
         }
 
         self.smoke_test(&self.mac_install_path, version)?;

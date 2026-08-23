@@ -119,7 +119,8 @@ Buddy selects the package for the current operating system and architecture,
 validates the release URL and metadata, verifies the package against its
 published SHA-256 checksum, and cross-checks GitHub's asset digest when present.
 macOS updates also verify the signed installer and require a successful
-Gatekeeper assessment before opening it. See the
+Gatekeeper assessment before installing it through the command-line installer.
+See the
 [update guide](docs/updates.md) for platform behavior and source-installation
 instructions.
 

@@ -49,9 +49,10 @@ architecture. Before installation, Buddy:
 
 Official releases use Developer ID-signed and Apple-notarized installer
 packages. Buddy verifies the package signature, requires a successful macOS
-Gatekeeper assessment, and opens the standard macOS Installer, which may request
-administrator approval. Buddy waits for Installer to close and verifies the
-version installed at `/usr/local/bin/buddy`.
+Gatekeeper assessment, and invokes `/usr/sbin/installer` directly so the
+graphical Next/Install flow is not required. Installing into `/usr/local/bin`
+still requires administrator permissions. Buddy verifies the version installed
+at `/usr/local/bin/buddy` after installation.
 
 ### Linux
 
