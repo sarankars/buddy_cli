@@ -2,7 +2,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use is_terminal::IsTerminal;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::io::{self, Read, Write};
 use std::rc::Rc;
 
@@ -218,18 +218,29 @@ fn run_enhance(args: EnhanceArgs, services: &Services) -> i32 {
             match OllamaClient::new(&cfg.base_url) {
                 Ok(client) => {
                     let enhancer = OllamaEnhancer::new(client, &cfg.model);
-                    let progress = Box::new(|chunk: &str| {
-                        eprint!("{}", chunk);
-                        let _ = io::stderr().flush();
+                    let streamed_output = Rc::new(Cell::new(false));
+                    let streamed_output_flag = streamed_output.clone();
+                    let progress = Box::new(move |chunk: &str| {
+                        if !chunk.is_empty() {
+                            print!("{}", chunk);
+                            let _ = io::stdout().flush();
+                            streamed_output_flag.set(true);
+                        }
                     }) as GenerationProgress;
                     let result = enhancer.enhance_with_progress(&prompt, Some(progress));
-                    eprintln!();
                     match result {
                         Ok(enhanced) => {
-                            println!("{}", enhanced);
+                            if streamed_output.get() {
+                                println!();
+                            } else {
+                                println!("{}", enhanced);
+                            }
                             return 0;
                         }
                         Err(e) => {
+                            if streamed_output.get() {
+                                println!();
+                            }
                             eprintln!(
                                 "buddy: local AI unavailable ({}); using offline enhancer",
                                 e
