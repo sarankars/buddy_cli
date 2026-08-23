@@ -67,10 +67,8 @@ smoke-tests the downloaded executable and starts a detached PowerShell helper
 that waits for the current Buddy process to exit before replacing it. Start
 Buddy again after a few seconds. The installation directory must be writable.
 
-## Python and source installations
+## Source installations
 
-`buddy update --check` works from a virtual environment or source checkout, but
-automatic installation is intentionally limited to standalone Buddy binaries.
-Buddy will never replace `python`, a virtual environment, or a package-manager
-installation. Update those installations with the same Python package manager
-that installed Buddy.
+`buddy update --check` works from a source checkout, but automatic installation
+is intentionally limited to standalone Buddy binaries. For a source build,
+update with `cargo install --path . --locked` after fetching the new version.

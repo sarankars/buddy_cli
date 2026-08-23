@@ -1,0 +1,45 @@
+[package]
+name = "buddy"
+version = "0.4.0"
+edition = "2021"
+authors = ["Sarankar S <sarankar.s@gmail.com>"]
+description = "Enhance rough prompts before sending them to an AI assistant."
+readme = "README.md"
+license = "MIT"
+default-run = "buddy"
+
+[[bin]]
+name = "buddy"
+path = "src/main.rs"
+
+[lib]
+name = "buddy"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive", "env"] }
+dirs = "5.0"
+flate2 = "1.0"
+hex = "0.4"
+is-terminal = "0.4"
+regex = "1.10"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "json", "stream"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+tar = "0.4"
+tempfile = "3.12"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+zstd = "0.13"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3.12"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

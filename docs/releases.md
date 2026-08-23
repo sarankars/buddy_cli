@@ -43,17 +43,15 @@ and GitHub's guide to
 ## Prepare a release
 
 1. Confirm the `main` branch quality workflow is green.
-2. Update the base version in both `pyproject.toml` and
-   `src/buddy_cli/__init__.py`. A prerelease such as `v0.3.0-beta.1` uses the
-   base project version `0.3.0`.
+2. Update the version in `Cargo.toml`. A prerelease such as `v0.3.0-beta.1`
+   uses the base project version `0.3.0`.
 3. Update documentation and commit the release-ready source to `main`.
 4. Run the local checks:
 
    ```bash
-   python -m ruff format --check src tests scripts
-   python -m ruff check src tests scripts
-   python -m unittest discover -s tests -v
-   python -m pip check
+   cargo fmt --check
+   cargo clippy --all-targets -- -D warnings
+   cargo test
    ```
 
 5. Create and push an annotated tag that points to the verified commit:
@@ -72,7 +70,7 @@ Pushing a matching tag starts the `Release` workflow. It:
 
 1. Rejects malformed SemVer tags and tags whose base version differs from the
    project version.
-2. Runs the complete quality and test suite on Python 3.9 and 3.14.
+2. Runs the complete Rust quality and test suite.
 3. Builds and smoke-tests native standalone binaries for macOS Intel and ARM64,
    Windows x64 and ARM64, and Linux x64 and ARM64.
 4. Signs every macOS executable with Developer ID Application, creates a signed

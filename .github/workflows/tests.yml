@@ -16,39 +16,53 @@ concurrency:
 
 jobs:
   test:
-    name: Python ${{ matrix.python-version }}
-    runs-on: ubuntu-24.04
+    name: Rust ${{ matrix.rust }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version:
-          - "3.9"
-          - "3.14"
+        include:
+          - rust: stable
+            os: ubuntu-24.04
+          - rust: stable
+            os: macos-15
+          - rust: stable
+            os: windows-2025
 
     steps:
       - name: Check out source
         uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt, clippy
 
-      - name: Install Buddy and quality tools
-        run: python -m pip install --editable ".[quality]"
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
 
-      - name: Check installed dependencies
-        run: python -m pip check
-
-      - name: Compile Python sources
-        run: python -m compileall -q src tests scripts
+      - name: Cache build outputs
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-
 
       - name: Check formatting
-        run: python -m ruff format --check src tests scripts
+        run: cargo fmt --check
 
       - name: Run lint checks
-        run: python -m ruff check src tests scripts
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Run tests
-        run: python -m unittest discover -s tests -v
+        run: cargo test

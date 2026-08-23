@@ -139,13 +139,13 @@ and platform-specific storage locations.
 
 ## Development
 
-Buddy requires Python 3.9 or newer for source development.
+Buddy requires Rust and Cargo for source development.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --editable .
-python -m unittest discover -s tests -v
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+cargo run -- enhance --offline "make the readme better"
 ```
 
 `BUDDY_HOME` overrides the application-data directory for isolated development
@@ -157,17 +157,15 @@ BUDDY_HOME=/tmp/buddy-dev buddy setup --dry-run
 
 ## Standalone executable
 
-Install the build dependency and create a platform-specific executable:
+Build and install the native executable:
 
 ```bash
-python -m pip install --editable '.[build]'
-python scripts/build_standalone.py
+cargo build --release
+cargo install --path . --locked
 ```
 
-The result is written to `dist/buddy` (`dist/buddy.exe` on Windows). The
-executable includes Python and Buddy's Python dependencies. Ollama and the model
-remain first-run downloads managed by `buddy setup`, keeping the Buddy download
-itself reasonably small.
+The release binary is written to `target/release/buddy`. Ollama and the model
+remain first-run downloads managed by `buddy setup`.
 
 Official macOS releases are Developer ID-signed, notarized, and distributed as
 installer packages. Download the package matching the Mac's architecture and
@@ -183,9 +181,8 @@ notarization ticket for Gatekeeper verification.
 
 ## GitHub Actions
 
-Every push to `main` runs the test suite on the minimum supported Python version
-and the latest stable Python version, along with formatting, lint, compilation,
-and dependency checks.
+Every push to `main` runs the Rust formatting, lint, compilation, and test
+checks.
 
 Pushing a matching semantic-version tag builds and smoke-tests standalone
 packages for macOS Intel and ARM64, Windows x64 and ARM64, and Linux x64 and
