@@ -522,7 +522,7 @@ impl Updater {
             let pid = std::process::id();
 
             let mut cmd = Command::new("powershell.exe");
-            cmd.args(&[
+            cmd.args([
                 "-NoProfile",
                 "-NonInteractive",
                 "-ExecutionPolicy",
