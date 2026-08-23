@@ -28,6 +28,7 @@ impl fmt::Display for OllamaError {
 impl std::error::Error for OllamaError {}
 
 pub type ModelProgress<'a> = Box<dyn FnMut(&str, Option<u64>, Option<u64>) + 'a>;
+pub type GenerationProgress<'a> = Box<dyn FnMut(&str) + 'a>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OllamaVersion {
@@ -285,6 +286,92 @@ impl OllamaClient {
             .get("response")
             .and_then(|r| r.as_str())
             .ok_or_else(|| OllamaError::Api("Ollama returned an empty enhancement".to_string()))?;
+
+        let trimmed = generated.trim();
+        if trimmed.is_empty() {
+            return Err(OllamaError::Api(
+                "Ollama returned an empty enhancement".to_string(),
+            ));
+        }
+
+        Ok(trimmed.to_string())
+    }
+
+    pub fn generate_stream(
+        &self,
+        model: &str,
+        prompt: &str,
+        system: &str,
+        response_format: Option<Value>,
+        options: Option<HashMap<String, Value>>,
+        mut progress: Option<GenerationProgress>,
+    ) -> Result<String, OllamaError> {
+        let url = format!("{}/api/generate", self.base_url);
+        let client = self.client()?;
+
+        let mut generation_options = serde_json::Map::new();
+        generation_options.insert("temperature".to_string(), serde_json::json!(0.1));
+        generation_options.insert("num_predict".to_string(), serde_json::json!(512));
+
+        if let Some(opts) = options {
+            for (k, v) in opts {
+                generation_options.insert(k, v);
+            }
+        }
+
+        let mut payload = serde_json::Map::new();
+        payload.insert("model".to_string(), serde_json::json!(model));
+        payload.insert("prompt".to_string(), serde_json::json!(prompt));
+        payload.insert("system".to_string(), serde_json::json!(system));
+        payload.insert("stream".to_string(), serde_json::json!(true));
+        payload.insert("keep_alive".to_string(), serde_json::json!("5m"));
+        payload.insert("options".to_string(), Value::Object(generation_options));
+
+        if let Some(fmt) = response_format {
+            payload.insert("format".to_string(), fmt);
+        }
+
+        let resp = client
+            .post(&url)
+            .header(ACCEPT, "application/json")
+            .header(CONTENT_TYPE, "application/json")
+            .json(&Value::Object(payload))
+            .send()
+            .map_err(|e| {
+                OllamaError::Connection(format!(
+                    "could not reach Ollama at {}: {}",
+                    self.base_url, e
+                ))
+            })?;
+
+        if !resp.status().is_success() {
+            return Err(OllamaError::Api(format!("HTTP {}", resp.status())));
+        }
+
+        let reader = BufReader::new(resp);
+        let mut generated = String::new();
+        for line in reader.lines() {
+            let line_str =
+                line.map_err(|e| OllamaError::Api(format!("stream read error: {}", e)))?;
+            let trimmed = line_str.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            let val: Value = serde_json::from_str(trimmed)
+                .map_err(|e| OllamaError::Api(format!("invalid stream JSON: {}", e)))?;
+
+            if let Some(err) = val.get("error").and_then(|e| e.as_str()) {
+                return Err(OllamaError::Api(err.to_string()));
+            }
+
+            if let Some(response) = val.get("response").and_then(|r| r.as_str()) {
+                generated.push_str(response);
+                if let Some(ref mut emit_progress) = progress {
+                    emit_progress(response);
+                }
+            }
+        }
 
         let trimmed = generated.trim();
         if trimmed.is_empty() {

@@ -3,13 +3,13 @@
 use clap::{Args, Parser, Subcommand};
 use is_terminal::IsTerminal;
 use std::cell::RefCell;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::rc::Rc;
 
 use crate::constants::DEFAULT_MODEL;
 use crate::editor::read_prompt_from_editor;
 use crate::enhancer::{OllamaEnhancer, RuleBasedEnhancer};
-use crate::ollama::OllamaClient;
+use crate::ollama::{GenerationProgress, OllamaClient};
 use crate::provisioning::ProvisioningError;
 use crate::services::{build_services, Services};
 use crate::ui::TerminalUI;
@@ -218,7 +218,13 @@ fn run_enhance(args: EnhanceArgs, services: &Services) -> i32 {
             match OllamaClient::new(&cfg.base_url) {
                 Ok(client) => {
                     let enhancer = OllamaEnhancer::new(client, &cfg.model);
-                    match enhancer.enhance(&prompt) {
+                    let progress = Box::new(|chunk: &str| {
+                        eprint!("{}", chunk);
+                        let _ = io::stderr().flush();
+                    }) as GenerationProgress;
+                    let result = enhancer.enhance_with_progress(&prompt, Some(progress));
+                    eprintln!();
+                    match result {
                         Ok(enhanced) => {
                             println!("{}", enhanced);
                             return 0;

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::LazyLock;
 
-use crate::ollama::{OllamaClient, OllamaError};
+use crate::ollama::{GenerationProgress, OllamaClient, OllamaError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmptyPromptError(pub &'static str);
@@ -193,14 +193,88 @@ impl OllamaEnhancer {
         )
     }
 
+    fn generate_prompt_stream(
+        &self,
+        editing_request: &str,
+        progress: Option<GenerationProgress>,
+    ) -> Result<String, OllamaError> {
+        let mut options = HashMap::new();
+        options.insert("temperature".to_string(), serde_json::json!(0));
+        options.insert("seed".to_string(), serde_json::json!(42));
+        options.insert("num_predict".to_string(), serde_json::json!(768));
+
+        self.client.generate_stream(
+            &self.model,
+            editing_request,
+            &self.system_prompt,
+            Some(enhancement_schema()),
+            Some(options),
+            progress,
+        )
+    }
+
+    fn streamed_prompt(raw_output: &str, emitted_chars: usize) -> Option<(String, usize)> {
+        let key_start = raw_output.find("\"rewritten_prompt\"")?;
+        let value_start = raw_output[key_start..].find(':')? + key_start;
+        let value_start = raw_output[value_start + 1..].find('"')? + value_start + 1;
+        let value = &raw_output[value_start..];
+        let mut escaped = false;
+        let closing_quote = value.char_indices().skip(1).find_map(|(index, character)| {
+            if escaped {
+                escaped = false;
+                return None;
+            }
+            if character == '\\' {
+                escaped = true;
+                return None;
+            }
+            (character == '"').then_some(index + 1)
+        });
+        let candidate = match closing_quote {
+            Some(end) => value[..end].to_string(),
+            None => format!("{}\"", value),
+        };
+        let decoded = serde_json::from_str::<String>(&candidate).ok()?;
+        let chars = decoded.chars().collect::<Vec<_>>();
+        if chars.len() <= emitted_chars {
+            return None;
+        }
+
+        Some((chars[emitted_chars..].iter().collect(), chars.len()))
+    }
+
     pub fn enhance(&self, prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
+        self.enhance_with_progress(prompt, None)
+    }
+
+    pub fn enhance_with_progress(
+        &self,
+        prompt: &str,
+        progress: Option<GenerationProgress>,
+    ) -> Result<String, Box<dyn std::error::Error>> {
         let cleaned = prompt.trim();
         if cleaned.is_empty() {
             return Err(Box::new(EmptyPromptError("the prompt cannot be empty")));
         }
 
         let editing_request = self.request_for(cleaned);
-        let raw_output = self.generate_prompt(&editing_request)?;
+        let mut emitted_chars = 0;
+        let mut progress = progress;
+        let raw_output = self.generate_prompt_stream(
+            &editing_request,
+            progress.as_mut().map(|user_progress| {
+                let mut raw_output = String::new();
+                Box::new(move |chunk: &str| {
+                    raw_output.push_str(chunk);
+                    if let Some((delta, total_chars)) =
+                        Self::streamed_prompt(&raw_output, emitted_chars)
+                    {
+                        emitted_chars = total_chars;
+                        user_progress(&delta);
+                    }
+                }) as GenerationProgress
+            }),
+        )?;
 
         match self.validated_prompt(&raw_output) {
             Ok(valid) => Ok(valid),
@@ -258,5 +332,19 @@ mod tests {
         assert!(enhancer
             .validated_prompt(r#"{"rewritten_prompt": "Write a clean README file with sections."}"#)
             .is_ok());
+    }
+
+    #[test]
+    fn test_streamed_prompt_decodes_partial_json() {
+        let first =
+            OllamaEnhancer::streamed_prompt(r#"{"rewritten_prompt":"Write a clear"#, 0).unwrap();
+        assert_eq!(first, ("Write a clear".to_string(), 13));
+
+        let second = OllamaEnhancer::streamed_prompt(
+            r#"{"rewritten_prompt":"Write a clear README"}"#,
+            first.1,
+        )
+        .unwrap();
+        assert_eq!(second, (" README".to_string(), 20));
     }
 }
