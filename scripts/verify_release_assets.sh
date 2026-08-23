@@ -65,10 +65,11 @@ for archive_name in "${ARCHIVES[@]}"; do
 
   # shasum is available on macOS; sha256sum on Linux
   if command -v sha256sum &>/dev/null; then
-    actual_line=$(sha256sum "$archive" | sed 's|.*/||')
+    digest=$(sha256sum "$archive" | awk '{print $1}')
   else
-    actual_line=$(shasum -a 256 "$archive" | sed 's|.*/||')
+    digest=$(shasum -a 256 "$archive" | awk '{print $1}')
   fi
+  actual_line="$digest  $archive_name"
 
   stored=$(cat "$checksum_file")
   # Normalise line endings
