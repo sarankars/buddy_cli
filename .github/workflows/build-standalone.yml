@@ -177,13 +177,13 @@ jobs:
 
       - name: Build release binary (macOS — with codesign)
         if: runner.os == 'macOS'
-        run: >-
+        run: |
           cargo build --release --target ${{ matrix.rust-target }}
-          && codesign --sign "$APPLE_APPLICATION_IDENTITY"
-            --options runtime
-            --timestamp
-            --entitlements scripts/entitlements.plist
-            target/${{ matrix.rust-target }}/release/buddy
+          codesign --force \
+            --sign "$APPLE_APPLICATION_IDENTITY" \
+            --options runtime \
+            --timestamp \
+            "target/${{ matrix.rust-target }}/release/buddy"
 
       - name: Build release binary
         if: runner.os != 'macOS'
