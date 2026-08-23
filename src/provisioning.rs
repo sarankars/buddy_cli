@@ -126,7 +126,11 @@ impl Provisioner {
                 let mut stat = MaybeUninit::<libc::statvfs>::uninit();
                 if libc::statvfs(c_path.as_ptr(), stat.as_mut_ptr()) == 0 {
                     let stat = stat.assume_init();
-                    let free_space = u64::from(stat.f_bavail).saturating_mul(stat.f_frsize);
+                    #[cfg(target_os = "macos")]
+                    let available_blocks = u64::from(stat.f_bavail);
+                    #[cfg(not(target_os = "macos"))]
+                    let available_blocks = stat.f_bavail;
+                    let free_space = available_blocks.saturating_mul(stat.f_frsize);
                     if free_space < required_space {
                         return Err(ProvisioningError::Failure(format!(
                             "not enough free space for Ollama and the enhancement model: need approximately {}, have {}",
