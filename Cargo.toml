@@ -1,6 +1,6 @@
 [package]
 name = "buddy"
-version = "0.4.7"
+version = "0.4.8"
 edition = "2021"
 authors = ["Sarankar S <sarankar.s@gmail.com>"]
 description = "Enhance rough prompts before sending them to an AI assistant."
